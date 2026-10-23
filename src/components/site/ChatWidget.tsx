@@ -28,6 +28,10 @@ import { useSitio } from '@/context/SitioContext';
 import { WhatsAppIcon } from './icons';
 import { resolveAction, type ChatAction, type ChatActionKind } from '@/lib/chatActions';
 import { useChatWidget } from '@/context/ChatWidgetContext';
+import type { CotizacionChat, DatosChat, ProductoChat, ServicioChat } from '@/lib/chatCotizacion';
+import { ChatDatos, ChatEnlaces, ChatServicios } from './ChatTarjetas';
+import { ChatProductos } from './ChatProductos';
+import { ChatCotizacion, type EnvioCotizacion } from './ChatCotizacion';
 
 /*
  * Íconos: todos de lucide-react (un solo estilo de trazo en todo el widget),
@@ -47,6 +51,13 @@ type ChatMsg = {
   instant?: boolean;
   actions?: ChatAction[];
   options?: string[];
+  // Productos sugeridos (tarjetas con foto, precio y stock del catálogo).
+  productos?: ProductoChat[];
+  servicios?: ServicioChat[];
+  datos?: DatosChat;
+  // Cotización armada por el asistente (montos del servidor) y, si ya se envió, su registro.
+  cotizacion?: CotizacionChat;
+  enviada?: EnvioCotizacion;
   at?: number;
   sid?: string;
   name?: string;
@@ -58,7 +69,7 @@ type Agent = { estado: 'BOT' | 'ASESOR' | 'CERRADA'; asesor: { nombre: string | 
 type Area = { label: string; contact: string; phone: string; number: string; photo: string | null };
 // Conversación archivada (historial): se guarda al tocar "Nueva".
 type ChatSession = { id: number; title: string; at: number; messages: ChatMsg[]; remote?: Remote | null };
-type BotReply = { text: string; actions: ChatAction[]; options: string[] };
+type BotReply = { text: string; actions: ChatAction[]; options: string[]; productos?: ProductoChat[]; servicios?: ServicioChat[]; datos?: DatosChat; cotizacion?: CotizacionChat };
 
 const GREETING: ChatMsg = {
   from: 'bot',
@@ -91,6 +102,11 @@ function loadHistory(): ChatMsg[] | null {
           ? m.actions.filter((a: ChatAction) => typeof a?.href === 'string' && SAFE_HREF.test(a.href) && a.kind in ACTION_ICON)
           : undefined,
         options: Array.isArray(m.options) ? m.options.filter((o: unknown) => typeof o === 'string') : undefined,
+        productos: productosGuardados(m.productos),
+        servicios: serviciosGuardados(m.servicios),
+        datos: datosGuardados(m.datos),
+        cotizacion: cotizacionGuardada(m.cotizacion),
+        enviada: m.enviada && typeof m.enviada === 'object' && (m.enviada.tipo === 'presupuesto' || m.enviada.tipo === 'servicio') ? m.enviada : undefined,
         at: typeof m.at === 'number' ? m.at : undefined,
         sid: typeof m.sid === 'string' ? m.sid : undefined,
         name: typeof m.name === 'string' ? m.name : undefined,
@@ -100,7 +116,54 @@ function loadHistory(): ChatMsg[] | null {
   }
 }
 
+/** Cotización del historial: solo si tiene la forma esperada y sus enlaces son internos. */
+function cotizacionGuardada(c: unknown): CotizacionChat | undefined {
+  if (!c || typeof c !== 'object') return undefined;
+  const x = c as CotizacionChat;
+  if (x.tipo === 'servicio') return typeof x.servicio?.slug === 'string' && typeof x.servicio.title === 'string' ? x : undefined;
+  if (x.tipo !== 'productos' || !Array.isArray(x.lineas) || typeof x.total !== 'number') return undefined;
+  return x.lineas.every((l) => typeof l?.href === 'string' && l.href.startsWith('/') && typeof l.subtotal === 'number') ? x : undefined;
+}
+
+/** Tarjetas de producto del historial: forma esperada y enlace interno. */
+function productosGuardados(ps: unknown): ProductoChat[] | undefined {
+  if (!Array.isArray(ps)) return undefined;
+  const ok = ps.filter((p): p is ProductoChat => !!p && typeof p.sku === 'string' && typeof p.nombre === 'string' && typeof p.precio === 'number' && typeof p.href === 'string' && p.href.startsWith('/') && (p.stock === 'si' || p.stock === 'no' || p.stock === 'consultar') && (typeof p.imagen !== 'string' || !/^\s*javascript:/i.test(p.imagen)));
+  return ok.length ? ok.slice(0, 3) : undefined;
+}
+
+function serviciosGuardados(ss: unknown): ServicioChat[] | undefined {
+  if (!Array.isArray(ss)) return undefined;
+  const ok = ss.filter((x): x is ServicioChat => !!x && typeof x.slug === 'string' && typeof x.titulo === 'string' && typeof x.descripcion === 'string' && typeof x.href === 'string' && x.href.startsWith('/servicios/') && (typeof x.imagen !== 'string' || !/^\s*javascript:/i.test(x.imagen)));
+  return ok.length ? ok.slice(0, 3) : undefined;
+}
+
+function datosGuardados(d: unknown): DatosChat | undefined {
+  if (!d || typeof d !== 'object') return undefined;
+  const x = d as DatosChat;
+  if (typeof x.titulo !== 'string' || !Array.isArray(x.filas)) return undefined;
+  const filas = x.filas.filter((f) => f && typeof f.etiqueta === 'string' && typeof f.valor === 'string').slice(0, 6);
+  return filas.length ? { titulo: x.titulo, filas } : undefined;
+}
+
+/** Lo que la IA ve de un mensaje suyo con cotización (para que siga la charla con el detalle a la vista). */
+function contenidoParaIA(m: ChatMsg): string {
+  const c = m.cotizacion;
+  const fichas = [
+    m.productos?.length ? ` [Productos mostrados: ${m.productos.map((p) => `SKU ${p.sku}`).join(', ')}]` : '',
+    m.servicios?.length ? ` [Servicios mostrados: ${m.servicios.map((x) => x.slug).join(', ')}]` : '',
+    m.datos ? ` [Datos mostrados: ${m.datos.filas.map((f) => `${f.etiqueta}: ${f.valor}`).join('; ')}]` : '',
+  ].join('');
+  if (!c) return m.text + fichas;
+  const detalle = c.tipo === 'servicio'
+    ? `servicio ${c.servicio.slug}`
+    : `${c.lineas.map((l) => `${l.cantidad} x SKU ${l.sku}`).join(', ')}; total USD ${c.total} con IGV`;
+  return `${m.text} [Cotización mostrada: ${detalle}${c.contacto ? `; contacto ${c.contacto.nombre} <${c.contacto.email}>` : '; sin datos de contacto'}${m.enviada ? '; YA ENVIADA' : ''}]`;
+}
+
 const REMOTE_KEY = 'fp-chat-remote-v1';
+// Opción del aviso "estoy ocupado": reenvía la última pregunta del visitante.
+const REINTENTAR = 'Intentar de nuevo';
 
 function loadRemote(): Remote | null {
   try {
@@ -275,7 +338,7 @@ const THEMES = {
     userBubble: 'bg-brand-700 text-white shadow-sm shadow-brand-950/20',
     link: 'border-brand-200 bg-white text-brand-700 hover:border-brand-700 hover:bg-brand-700 hover:text-white',
     whatsapp: 'border-whatsapp-dark/30 bg-whatsapp/10 text-whatsapp-dark hover:border-whatsapp-dark hover:bg-whatsapp-dark hover:text-white',
-    chip: 'border-brand-200 bg-white text-brand-700 hover:border-brand-700 hover:bg-brand-700 hover:text-white',
+    chip: 'border-brand-200 bg-brand-50 text-brand-700 shadow-sm shadow-brand-950/5 hover:-translate-y-0.5 hover:border-brand-700 hover:bg-brand-700 hover:text-white',
     inputBar: 'border-brand-100 bg-white',
     notice: 'border-brand-100 bg-white shadow-md shadow-brand-950/10',
     divider: 'bg-brand-100',
@@ -351,6 +414,68 @@ function Linkified({ text }: { text: string }) {
   );
 }
 
+/** **negrita** dentro de una línea (un "**" suelto, p. ej. a medio escribir, no se muestra) + enlaces. */
+function Inline({ text }: { text: string }) {
+  const partes = text.split(/\*\*(.+?)\*\*/g);
+  return (
+    <>
+      {partes.map((p, i) =>
+        i % 2 === 1 ? (
+          <strong key={i} className="font-semibold text-ink">{p}</strong>
+        ) : (
+          <Linkified key={i} text={p.replace(/\*\*/g, '')} />
+        ),
+      )}
+    </>
+  );
+}
+
+const VINETA = /^\s*[-•*]\s+/;
+const NUMERO = /^\s*(\d+)[.)]\s+/;
+
+/*
+ * Respuesta del asistente con formato liviano (lo que pide el prompt de app/api/chat): párrafos por salto de línea,
+ * listas con "- " o "1. " y **negrita**. Se arma con elementos de React, nunca con HTML del modelo.
+ */
+function TextoBot({ text }: { text: string }) {
+  const bloques: ({ tipo: 'p'; linea: string } | { tipo: 'ul' | 'ol'; items: string[] })[] = [];
+  for (const linea of text.split('\n')) {
+    if (!linea.trim()) continue;
+    const tipo = VINETA.test(linea) ? 'ul' : NUMERO.test(linea) ? 'ol' : 'p';
+    const ultimo = bloques[bloques.length - 1];
+    if (tipo === 'p') bloques.push({ tipo, linea });
+    else if (ultimo && ultimo.tipo === tipo) ultimo.items.push(linea.replace(tipo === 'ul' ? VINETA : NUMERO, ''));
+    else bloques.push({ tipo, items: [linea.replace(tipo === 'ul' ? VINETA : NUMERO, '')] });
+  }
+  return (
+    <div className="space-y-1.5">
+      {bloques.map((b, i) =>
+        b.tipo === 'p' ? (
+          <p key={i}><Inline text={b.linea} /></p>
+        ) : b.tipo === 'ul' ? (
+          <ul key={i} className="space-y-1">
+            {b.items.map((it, k) => (
+              <li key={k} className="flex gap-2">
+                <span aria-hidden className="mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-primary" />
+                <span><Inline text={it} /></span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ol key={i} className="space-y-1">
+            {b.items.map((it, k) => (
+              <li key={k} className="flex gap-2">
+                <span aria-hidden className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-primary text-[10px] font-bold text-white">{k + 1}</span>
+                <span><Inline text={it} /></span>
+              </li>
+            ))}
+          </ol>
+        ),
+      )}
+    </div>
+  );
+}
+
 /* Texto que se escribe letra por letra — solo la primera vez que aparece
    cada mensaje (skip=true lo muestra completo de una, para no repetir la
    animación cuando el usuario vuelve a esta vista). */
@@ -363,9 +488,11 @@ function TypewriterText({ text, skip, onDone }: { text: string; skip: boolean; o
     // Array.from: recorre por caracteres reales, no por unidades UTF-16 --
     // si no, los emojis (👋) se cortan a la mitad y se ve "�" un instante.
     const chars = Array.from(text);
+    // Respuestas largas (listas) se escriben más rápido: ~2,5 s como máximo.
+    const paso = Math.max(1, Math.ceil(chars.length / 160));
     let i = 0;
     const id = window.setInterval(() => {
-      i++;
+      i = Math.min(chars.length, i + paso);
       setShown(chars.slice(0, i).join(''));
       if (i >= chars.length) {
         window.clearInterval(id);
@@ -377,29 +504,11 @@ function TypewriterText({ text, skip, onDone }: { text: string; skip: boolean; o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (done) return <Linkified text={text} />;
+  if (done) return <TextoBot text={text} />;
   return (
     <>
-      {shown}
-      <span className="animate-pulse">▍</span>
+      <TextoBot text={`${shown}▍`} />
     </>
-  );
-}
-
-function ActionLink({ action, t }: { action: ChatAction; t: Theme }) {
-  const Icon = ACTION_ICON[action.kind];
-  const external = action.href.startsWith('http');
-  const tone = action.kind === 'whatsapp' ? t.whatsapp : t.link;
-  return (
-    <a
-      href={action.href}
-      target={external ? '_blank' : undefined}
-      rel={external ? 'noreferrer' : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${tone}`}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-      {action.label}
-    </a>
   );
 }
 
@@ -654,12 +763,23 @@ function ChatWidgetInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: history.filter((m) => m.from !== 'system').map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text })),
+          messages: history.filter((m) => m.from !== 'system').map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: contenidoParaIA(m).slice(0, 2000) })),
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 429 || (res.status === 503 && data?.error === 'ocupado')) {
+        // Cupo de la IA agotado por un momento (o tope por visitante): mensaje claro en vez del respaldo por palabras.
+        answer = {
+          text: res.status === 429 ? data.error || 'Enviaste muchos mensajes seguidos. Espera unos minutos o escríbenos por WhatsApp.' : 'Estoy atendiendo muchas consultas en este momento 🙏\nInténtalo de nuevo en unos segundos o escríbenos por WhatsApp y te atiende un asesor.',
+          actions: [resolveAction('whatsapp')].filter((a): a is ChatAction => a !== null),
+          options: res.status === 429 ? [] : [REINTENTAR],
+        };
+        setTyping(false);
+        setMessages((m) => [...m, { from: 'bot', ...answer, at: Date.now() }]);
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
-      const data = await res.json();
-      answer = { text: data.reply, actions: data.actions ?? [], options: data.options ?? [] };
+      answer = { text: data.reply, actions: data.actions ?? [], options: data.options ?? [], productos: productosGuardados(data.productos), servicios: serviciosGuardados(data.servicios), datos: datosGuardados(data.datos), cotizacion: cotizacionGuardada(data.cotizacion) };
     } catch {
       answer = fallbackReply(text);
       if (greet) answer.text = `¡Hola! 👋 ${answer.text}`;
@@ -926,12 +1046,20 @@ function ChatWidgetInner() {
                         </div>
                       </div>
 
-                      {m.from === 'bot' && ready && !!m.actions?.length && (
-                        <div className="animate-pop-in ml-9 flex flex-wrap gap-1.5">
-                          {m.actions.map((a) => (
-                            <ActionLink key={a.href} action={a} t={t} />
-                          ))}
-                        </div>
+                      {m.from === 'bot' && ready && m.datos && <ChatDatos datos={m.datos} />}
+
+                      {m.from === 'bot' && ready && !!m.productos?.length && <ChatProductos productos={m.productos} />}
+
+                      {m.from === 'bot' && ready && !!m.servicios?.length && <ChatServicios servicios={m.servicios} />}
+
+                      {m.from === 'bot' && ready && !!m.actions?.length && <ChatEnlaces acciones={m.actions} />}
+
+                      {m.from === 'bot' && ready && m.cotizacion && (
+                        <ChatCotizacion
+                          cotizacion={m.cotizacion}
+                          enviada={m.enviada}
+                          onEnviada={(enviada) => setMessages((ms) => ms.map((x, k) => (k === i ? { ...x, enviada } : x)))}
+                        />
                       )}
 
                       {/* Respuestas rápidas: solo en el último mensaje del bot. */}
@@ -941,7 +1069,7 @@ function ChatWidgetInner() {
                             <button
                               key={opt}
                               type="button"
-                              onClick={() => sendText(opt)}
+                              onClick={() => sendText(opt === REINTENTAR ? ([...messages].reverse().find((x) => x.from === 'user')?.text ?? opt) : opt)}
                               className={`rounded-xl rounded-br-sm border px-3 py-1.5 text-xs font-semibold transition-colors ${t.chip}`}
                             >
                               {opt}

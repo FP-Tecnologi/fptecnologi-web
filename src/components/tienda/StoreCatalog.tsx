@@ -243,7 +243,7 @@ export function StoreCatalog({
               <button
                 type="button"
                 onClick={() => setCats([])}
-                className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${cats.length === 0 ? 'bg-white text-brand-dark' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                className={`min-h-11 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${cats.length === 0 ? 'bg-white text-brand-dark' : 'bg-white/10 text-white hover:bg-white/20'}`}
               >
                 Todo ({products.length})
               </button>
@@ -254,7 +254,7 @@ export function StoreCatalog({
                     key={c.slug}
                     type="button"
                     onClick={() => setCats([c.slug])}
-                    className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${on ? 'bg-white text-brand-dark' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`min-h-11 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${on ? 'bg-white text-brand-dark' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
                     {c.title} ({count((p) => p.category === c.slug)})
                   </button>
@@ -270,7 +270,7 @@ export function StoreCatalog({
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_srgb,var(--color-brand-600)_16%,transparent)_1px,transparent_1px)] bg-[size:22px_22px]" />
       <div aria-hidden className="pointer-events-none absolute -right-24 top-10 h-80 w-80 rounded-full bg-brand-500/10 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -left-24 top-1/2 h-80 w-80 rounded-full bg-brand-300/20 blur-3xl" />
-      <main className="relative mx-auto grid max-w-7xl gap-8 px-6 py-12 lg:grid-cols-[260px_1fr]">
+      <main id="contenido" className="relative mx-auto grid max-w-7xl gap-8 px-6 py-12 lg:grid-cols-[260px_1fr]">
         {/* Filtros (desktop) */}
         <aside className="hidden lg:block">
           <div className="sticky top-28 rounded-2xl bg-brand-100 p-5">
@@ -332,6 +332,7 @@ export function StoreCatalog({
             </div>
           )}
 
+          <h2 className="sr-only">Productos</h2>
           {results.length > 0 ? (
             <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {results.map((p, i) => (
@@ -399,7 +400,7 @@ function FilterOption({ children, onClick, active, count }: { children: React.Re
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-brand-primary/5 ${active ? 'font-semibold text-brand-dark' : 'text-ink/75'}`}
+      className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-brand-primary/5 ${active ? 'font-semibold text-brand-dark' : 'text-ink/75'}`}
     >
       {children}
       <span className="ml-auto text-xs text-ink/65">{count}</span>

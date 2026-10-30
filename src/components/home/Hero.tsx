@@ -208,7 +208,7 @@ function CornerLink({
       />
     </span>
   );
-  const classes = `rounded-lg py-1.5 pl-1.5 pr-5 text-sm 2xl:text-base ${
+  const classes = `min-h-11 rounded-lg py-1.5 pl-1.5 pr-5 text-sm 2xl:text-base ${
     uppercase ? 'font-semibold uppercase tracking-wide' : 'font-normal'
   } ${active ? 'bg-white text-[rgba(30,50,90,0.9)] hover:bg-white/90' : 'text-white hover:bg-white/10'}`;
 
@@ -374,6 +374,8 @@ function AskAiCard() {
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          aria-label="Pregunta a nuestra IA"
+          name="pregunta"
           placeholder={animatedPlaceholder}
           className="min-w-0 flex-1 rounded-lg bg-black/25 px-3.5 py-2.5 text-xs text-white outline-none transition-colors placeholder:text-white/80 focus:bg-white/95 focus:text-ink focus:placeholder:text-ink/65 md:text-sm 2xl:py-3 2xl:text-base"
         />

@@ -52,7 +52,7 @@ export default async function CotizadorPage({ searchParams }: { searchParams: Pr
         descripcion={c.hero.descripcion}
       />
 
-      <main>
+      <main id="contenido">
         {/* Formulario + panel informativo (alineados bajo el hero) */}
         <section className="pb-20 pt-10 lg:pt-14">
           <div className="mx-auto grid max-w-7xl gap-8 px-6 lg:grid-cols-[22rem_1fr] lg:items-center xl:grid-cols-[24rem_1fr]">
@@ -95,7 +95,7 @@ export default async function CotizadorPage({ searchParams }: { searchParams: Pr
                           </span>
                           <span className="min-w-0">
                             <span className="block text-sm font-bold">{a.area}</span>
-                            <span className="block text-[11px] leading-snug opacity-70">{a.descripcion}</span>
+                            <span className="block text-xs leading-snug opacity-70">{a.descripcion}</span>
                           </span>
                         </div>
                         <a href={`tel:${a.telefono.replace(/\s/g, '')}`} className="mt-2 flex items-center gap-2 text-[13px] font-semibold">

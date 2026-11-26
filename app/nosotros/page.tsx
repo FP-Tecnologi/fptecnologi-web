@@ -17,7 +17,7 @@ import { getPagina } from '@/lib/paginasContenido';
 import { getClientes } from '@/lib/referencias';
 import { metaSeo } from '@/lib/seo';
 import { VideosSeccion } from '@/components/site/VideosSeccion';
-import { aVideos } from '@/lib/youtube';
+import { aVideos, getVideosCanal } from '@/lib/youtube';
 
 export const generateMetadata = () => metaSeo('nosotros', { title: 'Nosotros', description: 'Conoce a FPTecnologi & System: distribuidor autorizado de equipamiento TI y soluciones tecnológicas para empresas en Perú.' });
 
@@ -33,6 +33,9 @@ export default async function NosotrosPage() {
   const c = await getPagina('nosotros');
   const { stats: STATS } = await getSitio();
   const clientes = await getClientes();
+  // Videos elegidos en el dashboard; si no hay, los últimos del canal de YouTube.
+  const elegidos = aVideos(c.videos.items ?? []);
+  const videos = elegidos.length ? elegidos : await getVideosCanal(12);
   return (
     <>
       <PageHero
@@ -102,14 +105,13 @@ export default async function NosotrosPage() {
           </div>
         </section>
 
-        <VideosSeccion c={c.videos} videos={aVideos(c.videos.items ?? [])} fondo="blanco" conVisita={false} />
-
         <CertificacionesISO />
         <PartnerLevels conTitulo />
         <Reconocimientos />
         <BrandMarquee />
         <NuestrosClientes sectors={clientes} />
         <Contact />
+        <VideosSeccion c={c.videos} videos={videos} />
       </main>
       <Footer />
     </>
